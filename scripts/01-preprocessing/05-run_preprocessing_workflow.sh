@@ -15,7 +15,7 @@ REGION="us-east-1"
 ROLE_ARN="arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/OmicsWorkflowRole"
 
 # 文件路径
-WORKFLOW_DIR="workflows/wdl/preprocessing"
+WORKFLOW_DIR="workflows/01_data_preprocessing"
 WORKFLOW_FILE="$WORKFLOW_DIR/preprocessing_workflow.wdl"
 INPUTS_DIR="$WORKFLOW_DIR/inputs"
 
@@ -31,15 +31,20 @@ echo "✅ 工作流文件: $WORKFLOW_FILE"
 # 显示菜单
 echo ""
 echo "选择运行模式:"
-echo "1. 双端测序数据预处理"
+echo "1. 双端测序数据预处理 (默认)"
 echo "2. 单端测序数据预处理"
 echo "3. 批量处理多个样本"
 echo "4. 创建/更新工作流定义"
 echo "5. 查看现有工作流"
 echo "6. 查看运行历史"
 
-read -p "请选择 (1-6): " -n 1 -r
+read -p "请选择 (1-6) [默认: 1]: " -n 1 -r
 echo
+
+# 如果没有输入，默认选择1
+if [[ -z "$REPLY" ]]; then
+    REPLY="1"
+fi
 
 case $REPLY in
     1)
@@ -150,8 +155,19 @@ echo "----------------------------------------"
 head -20 "$INPUTS_FILE"
 echo "----------------------------------------"
 
-read -p "确认运行工作流? (y/N): " -n 1 -r
-echo
+# 支持自动确认模式
+if [[ "${AUTO_CONFIRM:-false}" == "true" ]]; then
+    echo "🤖 自动确认模式，跳过确认提示"
+    REPLY="y"
+else
+    read -p "确认运行工作流? (Y/n) [默认: Y]: " -n 1 -r
+    echo
+    # 如果没有输入或输入为空，默认为y
+    if [[ -z "$REPLY" ]]; then
+        REPLY="y"
+    fi
+fi
+
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "❌ 取消运行"
     exit 1
@@ -207,18 +223,48 @@ echo "运行名称: $RUN_NAME"
 echo "工作流ID: $WORKFLOW_ID"
 echo "运行组ID: $RUN_GROUP_ID"
 
+# 创建运行时参数文件（使用预定义的参数值）
+RUNTIME_PARAMS=$(mktemp)
+echo "🔄 准备运行参数..."
+cat > "$RUNTIME_PARAMS" << EOF
+{
+  "PreprocessingWorkflow.sample_name": "SRR16760538",
+  "PreprocessingWorkflow.fastq_r1": "s3://catface996-genomic/genomic_data/01_raw_data/SRR16760538_1.fastq.gz",
+  "PreprocessingWorkflow.fastq_r2": "s3://catface996-genomic/genomic_data/01_raw_data/SRR16760538_2.fastq.gz",
+  "PreprocessingWorkflow.reference_genome": "s3://catface996-genomic/genomic_data/02_reference_genome/GCF_002263795.1_ARS-UCD1.2_genomic.fna",
+  "PreprocessingWorkflow.min_length": 50,
+  "PreprocessingWorkflow.min_quality": 20,
+  "PreprocessingWorkflow.threads": 8,
+  "PreprocessingWorkflow.paired_end": true,
+  "PreprocessingWorkflow.RunFastPPE.max_length": 500,
+  "PreprocessingWorkflow.RunFastPPE.complexity_threshold": 30,
+  "PreprocessingWorkflow.RunFastPPE.enable_polyg_trimming": true,
+  "PreprocessingWorkflow.RunFastPPE.enable_polyx_trimming": true,
+  "PreprocessingWorkflow.RemoveDuplicatesPE.method": "fastuniq",
+  "PreprocessingWorkflow.RunFastQC.memory_gb": 8,
+  "PreprocessingWorkflow.RunTrimmomaticPE.memory_gb": 16,
+  "PreprocessingWorkflow.RunFastPPE.memory_gb": 16,
+  "PreprocessingWorkflow.RemoveDuplicatesPE.memory_gb": 16,
+  "PreprocessingWorkflow.RunMultiQC.memory_gb": 8
+}
+EOF
+
 RUN_ID=$(aws omics start-run \
     --region $REGION \
     --workflow-id $WORKFLOW_ID \
     --workflow-type PRIVATE \
     --run-group-id $RUN_GROUP_ID \
     --name $RUN_NAME \
-    --parameters file://$INPUTS_FILE \
+    --role-arn "arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/OmicsServiceRole" \
+    --parameters file://$RUNTIME_PARAMS \
     --output-uri "s3://catface996-genomic/omics-outputs/preprocessing/" \
     --log-level ALL \
-    --tags Project=CowGenomics,Sample=$(jq -r '.PreprocessingWorkflow.sample_name' $INPUTS_FILE),Type=Preprocessing \
+    --tags Project=CowGenomics,Sample=SRR16760538,Type=Preprocessing \
     --query 'id' \
     --output text)
+
+# 清理临时文件
+rm -f "$RUNTIME_PARAMS"
 
 echo ""
 echo "🎉 工作流运行已启动!"

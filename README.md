@@ -4,18 +4,31 @@
 
 ## 🚀 快速开始
 
-## 0-下载数据
+### 0. AWS Omics 存储设置 (新增 - 推荐)
+```bash
+# 一键设置Reference Store和Sequence Store
+cd scripts/00-setup
+./00-setup_omics_environment.sh
+```
+
+**优势**:
+- ✅ 存储成本节省65-70%
+- ✅ 针对基因组分析优化的性能
+- ✅ 与AWS Omics工作流原生集成
+- ✅ 自动元数据管理
+
+### 1. 下载数据
 
 https://trace.ncbi.nlm.nih.gov/Traces/?view=run_browser&page_size=10&acc=SRR16760538&display=metadata
 
-### 1. 生成变异基因组 (推荐)
+### 2. 生成变异基因组 (推荐)
 ```bash
 # 激活GPU环境并运行
 source gpu_env/bin/activate
 ./scripts/run_mutated_fna_generation.sh
 ```
 
-### 2. 查看项目结构
+### 3. 查看项目结构
 ```bash
 # 查看详细的项目结构说明
 cat PROJECT_STRUCTURE.md

@@ -1,0 +1,78 @@
+{
+  "PreprocessingWorkflow.sample_name": {
+    "description": "测序数据的样本标识符",
+    "optional": false
+  },
+  "PreprocessingWorkflow.fastq_r1": {
+    "description": "第一个配对端FASTQ文件的S3路径",
+    "optional": false
+  },
+  "PreprocessingWorkflow.fastq_r2": {
+    "description": "第二个配对端FASTQ文件的S3路径",
+    "optional": false
+  },
+  "PreprocessingWorkflow.reference_genome": {
+    "description": "参考基因组FASTA文件的S3路径 - 官方奶牛参考基因组 ARS-UCD1.2 (2.75GB)",
+    "optional": false
+  },
+  "PreprocessingWorkflow.min_length": {
+    "description": "修剪后的最小读长",
+    "optional": true
+  },
+  "PreprocessingWorkflow.min_quality": {
+    "description": "最小碱基质量分数",
+    "optional": true
+  },
+  "PreprocessingWorkflow.threads": {
+    "description": "使用的CPU线程数",
+    "optional": true
+  },
+  "PreprocessingWorkflow.paired_end": {
+    "description": "是否为配对端测序数据",
+    "optional": true
+  },
+  "PreprocessingWorkflow.adapter_fasta": {
+    "description": "可选的接头序列文件",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RunFastPPE.max_length": {
+    "description": "FastP处理的最大读长",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RunFastPPE.complexity_threshold": {
+    "description": "低复杂度过滤的复杂度阈值",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RunFastPPE.enable_polyg_trimming": {
+    "description": "启用poly-G尾部修剪",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RunFastPPE.enable_polyx_trimming": {
+    "description": "启用poly-X尾部修剪",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RemoveDuplicatesPE.method": {
+    "description": "去重复方法选择: fastuniq, clumpify, seqkit",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RunFastQC.memory_gb": {
+    "description": "FastQC的内存分配(GB)",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RunTrimmomaticPE.memory_gb": {
+    "description": "Trimmomatic的内存分配(GB)",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RunFastPPE.memory_gb": {
+    "description": "FastP的内存分配(GB)",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RemoveDuplicatesPE.memory_gb": {
+    "description": "去重复的内存分配(GB)",
+    "optional": true
+  },
+  "PreprocessingWorkflow.RunMultiQC.memory_gb": {
+    "description": "MultiQC的内存分配(GB)",
+    "optional": true
+  }
+}
