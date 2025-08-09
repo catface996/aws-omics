@@ -1,0 +1,40 @@
+# Git LFS 配置 - 管理大的基因组数据文件
+
+# 基因组序列文件
+*.fna filter=lfs diff=lfs merge=lfs -text
+*.fna.gz filter=lfs diff=lfs merge=lfs -text
+*.fasta filter=lfs diff=lfs merge=lfs -text
+*.fasta.gz filter=lfs diff=lfs merge=lfs -text
+
+# 蛋白质序列文件
+*.faa filter=lfs diff=lfs merge=lfs -text
+*.faa.gz filter=lfs diff=lfs merge=lfs -text
+
+# 注释文件
+*.gtf filter=lfs diff=lfs merge=lfs -text
+*.gtf.gz filter=lfs diff=lfs merge=lfs -text
+*.gff filter=lfs diff=lfs merge=lfs -text
+*.gff.gz filter=lfs diff=lfs merge=lfs -text
+*.gff3 filter=lfs diff=lfs merge=lfs -text
+*.gff3.gz filter=lfs diff=lfs merge=lfs -text
+
+# GenBank格式文件
+*.gbff filter=lfs diff=lfs merge=lfs -text
+*.gbff.gz filter=lfs diff=lfs merge=lfs -text
+
+# 其他大的生物信息学文件
+*.vcf filter=lfs diff=lfs merge=lfs -text
+*.vcf.gz filter=lfs diff=lfs merge=lfs -text
+*.bam filter=lfs diff=lfs merge=lfs -text
+*.sam filter=lfs diff=lfs merge=lfs -text
+*.fastq filter=lfs diff=lfs merge=lfs -text
+*.fastq.gz filter=lfs diff=lfs merge=lfs -text
+*.fq filter=lfs diff=lfs merge=lfs -text
+*.fq.gz filter=lfs diff=lfs merge=lfs -text
+
+# 重复序列掩码文件
+*.out filter=lfs diff=lfs merge=lfs -text
+*.out.gz filter=lfs diff=lfs merge=lfs -text
+
+# 功能特征表（如果很大）
+*feature_table.txt.gz filter=lfs diff=lfs merge=lfs -text

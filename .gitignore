@@ -1,0 +1,137 @@
+# 日志文件
+*.log
+download.log
+
+# 临时文件
+*.tmp
+*.temp
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE文件
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# 备份文件
+*.bak
+*.backup
+*~
+
+# 基因组文件格式 (大文件)
+*.fna
+*.fasta
+*.fa
+*.fastq
+*.fq
+*.vcf
+*.sam
+*.bam
+*.bai
+
+# 压缩文件
+*.gz
+*.zip
+*.tar
+*.tar.gz
+
+# GPU环境
+gpu_env/
+
+# 临时处理文件
+*.processing
+*.intermediate
+
+# 编译文件和库文件
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+# 特定的大文件扩展名
+*.hdf5
+*.h5
+*.parquet
+*.arrow
+*.feather
+*.pickle
+*.pkl
+*.npy
+*.npz
+
+# 模型文件
+*.model
+*.weights
+*.checkpoint
+*.ckpt
+*.pth
+*.pt
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 媒体文件
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.mp3
+*.wav
+*.flac
+
+# 文档和图像（如果很大）
+*.pdf
+*.docx
+*.pptx
+*.xlsx
+
+# === 项目特定的大文件 ===
+
+# 公共数据文件 (>10GB)
+data/public_fastq/
+
+# 大型变异数据文件 (>100MB)
+data/variants/consolidated_simulation_data/consolidated_truth_set.json
+data/variants/consolidated_simulation_data/consolidated_variants.vcf
+
+# 基因组数据中的大文件
+genomic_data/reference/*.fna
+genomic_data/reference/*.fna.gz
+genomic_data/protein/*.faa.gz
+genomic_data/annotation/*.gff.gz
+genomic_data/annotation/*.gtf.gz
+genomic_data/annotation/*.fna.gz
+
+# 输出目录中的大文件
+outputs/mutated_genome/
+outputs/sequencing_data/
+outputs/analysis_results/
+outputs/illumina_*/
+outputs/fastq_*/
+
+# 但是保留这些重要的小文件
+!genomic_data/README.md
+!genomic_data/assembly/*.txt
+!genomic_data/checksums/*.txt
+!data/variants/consolidated_simulation_data/consolidation_report.json
+!outputs/README.md
+!data/README.md
+
+# 任何超过100MB的文件（通用规则）
+# 注意：这个规则需要手动维护，因为 .gitignore 不支持基于文件大小的规则
