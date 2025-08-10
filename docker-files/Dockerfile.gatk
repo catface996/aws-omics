@@ -1,0 +1,40 @@
+# GATK Dockerfile for AWS HealthOmics
+FROM ubuntu:20.04
+
+# 设置非交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装基础依赖
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    unzip \
+    openjdk-8-jdk \
+    python3 \
+    python3-pip \
+    samtools \
+    tabix \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建python符号链接
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# 设置Java环境变量
+ENV JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+ENV PATH=$PATH:$JAVA_HOME/bin
+
+# 下载并安装GATK 4.4.0.0
+WORKDIR /opt
+RUN wget https://github.com/broadinstitute/gatk/releases/download/4.4.0.0/gatk-4.4.0.0.zip \
+    && unzip gatk-4.4.0.0.zip \
+    && rm gatk-4.4.0.0.zip \
+    && ln -s /opt/gatk-4.4.0.0/gatk /usr/local/bin/gatk
+
+# 创建工作目录
+WORKDIR /data
+
+# 验证安装
+RUN gatk --version && samtools --version
+
+# 设置默认命令
+CMD ["gatk", "--help"]

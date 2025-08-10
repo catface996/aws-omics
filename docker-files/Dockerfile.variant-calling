@@ -1,0 +1,89 @@
+# 综合变异检测镜像 - 包含GATK和BCFtools
+FROM ubuntu:20.04
+
+# 设置非交互式安装
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装基础依赖
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    unzip \
+    build-essential \
+    openjdk-17-jdk \
+    python3 \
+    python3-pip \
+    zlib1g-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libncurses5-dev \
+    tabix \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建python符号链接
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# 设置Java环境变量
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV PATH=$PATH:$JAVA_HOME/bin
+
+WORKDIR /opt
+
+# 安装HTSlib
+RUN wget https://github.com/samtools/htslib/releases/download/1.17/htslib-1.17.tar.bz2 \
+    && tar -xjf htslib-1.17.tar.bz2 \
+    && cd htslib-1.17 \
+    && ./configure --prefix=/usr/local \
+    && make \
+    && make install \
+    && cd .. \
+    && rm -rf htslib-1.17*
+
+# 安装SAMtools
+RUN wget https://github.com/samtools/samtools/releases/download/1.17/samtools-1.17.tar.bz2 \
+    && tar -xjf samtools-1.17.tar.bz2 \
+    && cd samtools-1.17 \
+    && ./configure --prefix=/usr/local \
+    && make \
+    && make install \
+    && cd .. \
+    && rm -rf samtools-1.17*
+
+# 安装BCFtools
+RUN wget https://github.com/samtools/bcftools/releases/download/1.17/bcftools-1.17.tar.bz2 \
+    && tar -xjf bcftools-1.17.tar.bz2 \
+    && cd bcftools-1.17 \
+    && ./configure --prefix=/usr/local \
+    && make \
+    && make install \
+    && cd .. \
+    && rm -rf bcftools-1.17*
+
+# 安装GATK 4.4.0.0
+RUN wget https://github.com/broadinstitute/gatk/releases/download/4.4.0.0/gatk-4.4.0.0.zip \
+    && unzip gatk-4.4.0.0.zip \
+    && rm gatk-4.4.0.0.zip \
+    && ln -s /opt/gatk-4.4.0.0/gatk /usr/local/bin/gatk
+
+# 更新库路径
+RUN ldconfig
+
+# 创建工作目录
+WORKDIR /data
+
+# 验证所有工具安装
+RUN echo "=== 验证工具安装 ===" \
+    && gatk --version \
+    && echo "GATK: OK" \
+    && bcftools --version \
+    && echo "BCFtools: OK" \
+    && samtools --version \
+    && echo "SAMtools: OK" \
+    && tabix --version \
+    && echo "Tabix: OK" \
+    && echo "=== 所有工具安装成功 ==="
+
+# 设置默认命令
+CMD ["bash"]

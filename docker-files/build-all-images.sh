@@ -54,6 +54,26 @@ ecr_login() {
     fi
 }
 
+# 创建ECR仓库（如果不存在）
+create_ecr_repo() {
+    local repo_name=$1
+    
+    log_info "Checking if ECR repository $repo_name exists..."
+    
+    if aws ecr describe-repositories --repository-names $repo_name --region $REGION >/dev/null 2>&1; then
+        log_info "Repository $repo_name already exists"
+    else
+        log_info "Creating ECR repository $repo_name..."
+        aws ecr create-repository --repository-name $repo_name --region $REGION >/dev/null
+        if [ $? -eq 0 ]; then
+            log_success "Successfully created repository $repo_name"
+        else
+            log_error "Failed to create repository $repo_name"
+            return 1
+        fi
+    fi
+}
+
 # 构建镜像函数
 build_image() {
     local dockerfile=$1
@@ -76,6 +96,10 @@ build_image() {
 push_image() {
     local local_image=$1
     local ecr_image=$2
+    local repo_name=$3
+    
+    # 创建ECR仓库
+    create_ecr_repo $repo_name
     
     log_info "Tagging and pushing $local_image to $ecr_image..."
     
@@ -112,6 +136,9 @@ main() {
         ["Dockerfile.bwa"]="omics/bwa:0.7.17"
         ["Dockerfile.samtools"]="omics/samtools:1.17"
         ["Dockerfile.bwa-samtools"]="omics/bioinformatics:bwa-samtools-1.17"
+        ["Dockerfile.gatk"]="omics/gatk:4.4.0.0"
+        ["Dockerfile.bcftools"]="omics/bcftools:1.17"
+        ["Dockerfile.variant-calling"]="omics/variant-calling:latest"
     )
     
     # 构建计数器
@@ -124,13 +151,14 @@ main() {
         local image_tag="${images[$dockerfile]}"
         local image_name=$(echo $image_tag | cut -d':' -f1)
         local tag=$(echo $image_tag | cut -d':' -f2)
+        local repo_name=$image_name
         
         if build_image $dockerfile $image_name $tag; then
             ((built++))
             
             # 推送到ECR
             local ecr_image="$ECR_REGISTRY/$image_tag"
-            if push_image $image_tag $ecr_image; then
+            if push_image $image_tag $ecr_image $repo_name; then
                 log_success "✅ $image_tag -> ECR"
             else
                 log_error "❌ Failed to push $image_tag"
@@ -156,6 +184,37 @@ main() {
     fi
 }
 
+# 构建单个镜像函数
+build_single() {
+    local dockerfile=$1
+    local image_tag=$2
+    
+    if [ -z "$dockerfile" ] || [ -z "$image_tag" ]; then
+        log_error "Usage: $0 --single <dockerfile> <image:tag>"
+        exit 1
+    fi
+    
+    local image_name=$(echo $image_tag | cut -d':' -f1)
+    local tag=$(echo $image_tag | cut -d':' -f2)
+    local repo_name=$image_name
+    
+    check_docker
+    ecr_login
+    
+    if build_image $dockerfile $image_name $tag; then
+        local ecr_image="$ECR_REGISTRY/$image_tag"
+        if push_image $image_tag $ecr_image $repo_name; then
+            log_success "✅ Successfully built and pushed $image_tag"
+        else
+            log_error "❌ Failed to push $image_tag"
+            exit 1
+        fi
+    else
+        log_error "❌ Failed to build $image_tag"
+        exit 1
+    fi
+}
+
 # 显示帮助
 show_help() {
     echo "AWS Omics Docker Image Build Script"
@@ -163,14 +222,63 @@ show_help() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  -h, --help     Show this help message"
-    echo "  --build-only   Only build images, don't push to ECR"
-    echo "  --push-only    Only push existing images to ECR"
+    echo "  -h, --help                    Show this help message"
+    echo "  --build-only                  Only build images, don't push to ECR"
+    echo "  --push-only                   Only push existing images to ECR"
+    echo "  --single <dockerfile> <tag>   Build and push a single image"
+    echo "  --variant-calling             Build only variant calling images"
     echo ""
     echo "Examples:"
-    echo "  $0                 # Build and push all images"
-    echo "  $0 --build-only    # Only build images locally"
-    echo "  $0 --push-only     # Only push existing images"
+    echo "  $0                                              # Build and push all images"
+    echo "  $0 --build-only                                 # Only build images locally"
+    echo "  $0 --single Dockerfile.gatk omics/gatk:4.4.0.0 # Build single image"
+    echo "  $0 --variant-calling                            # Build variant calling images"
+}
+
+# 构建变异检测相关镜像
+build_variant_calling() {
+    log_info "Building variant calling images..."
+    
+    check_docker
+    ecr_login
+    
+    # 定义变异检测镜像列表
+    local dockerfiles=("Dockerfile.gatk" "Dockerfile.bcftools" "Dockerfile.variant-calling")
+    local image_tags=("omics/gatk:4.4.0.0" "omics/bcftools:1.17" "omics/variant-calling:latest")
+    
+    local built=0
+    local failed=0
+    local total=${#dockerfiles[@]}
+    
+    for i in "${!dockerfiles[@]}"; do
+        local dockerfile="${dockerfiles[$i]}"
+        local image_tag="${image_tags[$i]}"
+        local image_name=$(echo $image_tag | cut -d':' -f1)
+        local tag=$(echo $image_tag | cut -d':' -f2)
+        local repo_name=$image_name
+        
+        if build_image $dockerfile $image_name $tag; then
+            ((built++))
+            local ecr_image="$ECR_REGISTRY/$image_tag"
+            if push_image $image_tag $ecr_image $repo_name; then
+                log_success "✅ $image_tag -> ECR"
+            else
+                log_error "❌ Failed to push $image_tag"
+                ((failed++))
+            fi
+        else
+            log_error "❌ Failed to build $image_tag"
+            ((failed++))
+        fi
+        echo "----------------------------------------"
+    done
+    
+    if [ $failed -eq 0 ]; then
+        log_success "🎉 All variant calling images built successfully!"
+    else
+        log_error "Some variant calling images failed to build"
+        exit 1
+    fi
 }
 
 # 解析命令行参数
@@ -186,6 +294,12 @@ case "${1:-}" in
     --push-only)
         log_info "Push-only mode enabled"
         # TODO: Implement push-only mode
+        ;;
+    --single)
+        build_single "$2" "$3"
+        ;;
+    --variant-calling)
+        build_variant_calling
         ;;
     "")
         main
