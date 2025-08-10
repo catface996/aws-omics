@@ -25,12 +25,15 @@
 
 #### 2. **序列比对 (Sequence Alignment)** 🎯
 - **输入**: 清洁FASTQ文件 + 参考基因组
-- **工具**: BWA-MEM2 / Minimap2
+- **工具**: BWA-MEM + SAMtools
 - **功能**:
-  - 将测序reads比对到参考基因组
-  - 生成比对结果和统计信息
-- **输出**: 排序的BAM文件 + 比对统计
-- **AWS服务**: HealthOmics Workflows + EC2
+  - 参考基因组索引构建 (BWA + SAMtools索引)
+  - 高精度序列比对 (BWA-MEM算法)
+  - BAM格式转换和质量过滤
+  - 比对质量统计和评估
+- **输出**: 排序的BAM文件 + 比对统计报告
+- **AWS服务**: HealthOmics Workflows + 私有ECR镜像
+- **处理时间**: ~2.5-3小时 (索引50分钟 + 比对90分钟 + 处理25分钟)
 
 #### 3. **变异检测 (Variant Calling)** 🔍
 - **输入**: BAM文件 + 参考基因组
@@ -289,6 +292,160 @@ aws omics get-run-logs --id <run-id>
 **总处理时间**: ~1.5小时  
 **数据压缩率**: ~20% (去除低质量和重复序列)  
 **质量提升**: Q20+ reads比例从85%提升到95%+
+
+## 🎯 AWS Omics 序列比对工作流
+
+### 工作流架构
+```
+清洁FASTQ数据 → [索引构建] → [BWA比对] → [BAM处理] → 最终比对结果
+      ↓              ↓           ↓           ↓           ↓
+   1.3GB压缩      索引文件     SAM文件     BAM文件     统计报告
+                 (~6GB)      (~20GB)     (~5GB)      (数MB)
+```
+
+### 序列比对任务详解
+
+#### 1. **BuildReferenceIndex** - 参考基因组索引构建 🔧
+
+**用途**: 为参考基因组构建必要的索引文件，支持高效序列比对
+
+**详细功能**:
+- **BWA索引构建**: 创建BWA-MEM算法所需的索引文件(.amb, .ann, .bwt, .pac, .sa)
+- **SAMtools索引**: 生成FASTA索引文件(.fai)，用于快速随机访问参考序列
+- **序列字典**: 创建序列字典文件(.dict)，包含染色体信息和长度
+
+**技术细节**:
+- **工具**: BWA index + SAMtools faidx
+- **输入**: 参考基因组FASTA文件 (ARS-UCD1.2, ~2.75GB)
+- **输出**: 多个索引文件 (总计约5-6GB)
+- **资源配置**: 8 CPU, 16GB内存, 200GB存储
+- **运行时间**: 约50分钟
+
+**重要性**: 
+- 索引构建是一次性操作，后续比对可重复使用
+- 索引质量直接影响比对速度和准确性
+- 大型基因组需要充足的内存和存储空间
+
+#### 2. **BWAAlignment** - BWA序列比对 🎯
+
+**用途**: 将预处理后的测序reads比对到参考基因组上，生成比对结果
+
+**详细功能**:
+- **序列比对**: 使用BWA-MEM算法进行高精度比对
+- **读组信息**: 添加样本、文库、测序平台等元数据
+- **比对参数优化**: 针对短读长测序数据优化参数
+
+**技术细节**:
+- **工具**: BWA-MEM v0.7.17
+- **输入**: 清洁FASTQ文件 (~1.3GB压缩) + 参考基因组索引
+- **输出**: SAM格式比对文件 (~15-20GB未压缩)
+- **资源配置**: 16 CPU, 32GB内存, 400GB存储
+- **运行时间**: 约1-1.5小时
+
+**关键参数**:
+- **最小种子长度**: 19bp (平衡敏感性和特异性)
+- **带宽**: 100 (允许的插入缺失范围)
+- **比对评分**: A=1, B=4, O=6, E=1 (匹配/错配/gap惩罚)
+- **读组标签**: @RG\tID:样本ID\tSM:样本名\tPL:ILLUMINA
+
+**性能特点**:
+- **高通量**: 处理数百万条reads
+- **高精度**: 支持复杂基因组区域比对
+- **内存效率**: 流式处理减少内存占用
+
+#### 3. **ProcessAlignment** - 比对后处理和质量评估 📊
+
+**用途**: 将SAM文件转换为标准BAM格式，并进行质量过滤和统计分析
+
+**详细功能**:
+- **格式转换**: SAM转BAM，减少存储空间
+- **质量过滤**: 移除低质量比对 (MAPQ < 20)
+- **排序索引**: 按基因组坐标排序并创建索引
+- **统计分析**: 生成详细的比对质量报告
+
+**技术细节**:
+- **工具**: SAMtools v1.17
+- **输入**: SAM比对文件 (~15-20GB)
+- **输出**: 排序BAM文件 (~3-5GB) + 索引 + 统计报告
+- **资源配置**: 8 CPU, 16GB内存, 500GB存储
+- **运行时间**: 约20-30分钟
+
+**处理步骤**:
+1. **SAM转BAM**: `samtools view -b` (压缩比约4:1)
+2. **质量过滤**: 移除未比对reads (-F 4) 和低质量比对 (-q 20)
+3. **坐标排序**: `samtools sort` 按染色体位置排序
+4. **索引创建**: `samtools index` 生成.bai索引文件
+5. **统计生成**: 
+   - `samtools stats`: 详细比对统计
+   - `samtools flagstat`: 比对标志统计
+   - `samtools idxstats`: 每条染色体比对统计
+
+**质量指标**:
+- **总比对率**: 期望 >95%
+- **唯一比对率**: 期望 >90%
+- **重复率**: 通常 <20%
+- **插入片段大小**: 期望均值约300-500bp
+
+### 使用示例
+
+#### 启动序列比对工作流
+```bash
+aws omics start-run \
+    --workflow-id 2495995 \
+    --role-arn arn:aws:iam::ACCOUNT:role/OmicsServiceRole \
+    --name "cow-sequence-alignment-$(date +%Y%m%d-%H%M%S)" \
+    --output-uri "s3://your-bucket/omics-outputs/sequence-alignment/" \
+    --parameters '{
+        "sample_name": "SRR16760538",
+        "cleaned_fastq": "s3://path/to/cleaned.fastq.gz",
+        "reference_genome": "s3://path/to/reference.fna",
+        "bwa_cpu": 16,
+        "bwa_memory_gb": 32,
+        "samtools_cpu": 8,
+        "samtools_memory_gb": 16
+    }'
+```
+
+### 性能基准
+
+**测试数据**: SRR16760538 (奶牛基因组测序数据, 清洁后~1.3GB压缩)
+
+| 任务 | 运行时间 | CPU使用率 | 内存使用 | 输出大小 |
+|------|----------|-----------|----------|----------|
+| BuildReferenceIndex | 50分钟 | ~70% | 15GB | ~6GB索引文件 |
+| BWAAlignment | 90分钟 | ~85% | 30GB | ~20GB SAM文件 |
+| ProcessAlignment | 25分钟 | ~80% | 16GB | ~5GB BAM文件 |
+
+**总处理时间**: ~2.5-3小时  
+**数据压缩率**: SAM到BAM约4:1压缩  
+**比对质量**: 期望比对率>95%，唯一比对率>90%
+
+### 输出结果
+
+#### 主要输出文件
+- **final_bam**: 排序后的比对结果 (约3-5GB)
+- **final_bam_index**: BAM文件索引 (.bai)
+- **alignment_stats**: 详细比对统计 (samtools stats)
+- **flagstat_report**: 比对标志统计 (samtools flagstat)
+- **idxstats_report**: 染色体比对统计 (samtools idxstats)
+
+#### 输出目录结构
+```
+s3://bucket/omics-outputs/sequence-alignment/run-id/
+├── out/
+│   ├── final_bam/
+│   │   └── SRR16760538.sorted.bam
+│   ├── final_bam_index/
+│   │   └── SRR16760538.sorted.bam.bai
+│   ├── alignment_stats/
+│   │   └── SRR16760538_alignment_stats.txt
+│   ├── flagstat_report/
+│   │   └── SRR16760538_flagstat.txt
+│   └── idxstats_report/
+│       └── SRR16760538_idxstats.txt
+└── reference_index_files/
+    └── [BWA和SAMtools索引文件]
+```
 
 ## 📊 数据说明
 

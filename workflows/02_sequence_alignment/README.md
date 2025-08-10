@@ -4,151 +4,215 @@
 
 本目录包含基因组序列比对相关的工作流和工具，负责将预处理后的测序reads比对到参考基因组上。
 
-## 🎯 主要功能
+## 🔄 序列比对工作流任务详解
 
-### 序列比对 (Read Alignment)
-- **BWA-MEM**: 高效的短序列比对算法
-- **Bowtie2**: 替代比对工具
-- **STAR**: RNA-seq数据比对（如需要）
-- 多文件并行比对处理
+### 任务1: BuildReferenceIndex - 参考基因组索引构建 🔧
 
-### 比对后处理 (Post-alignment Processing)
-- **SAM/BAM格式转换**: 标准化比对结果格式
-- **排序和索引**: 提高后续分析效率
-- **比对质量评估**: 比对率和覆盖度统计
-- **重复标记**: 标记PCR和光学重复
+**用途**: 为参考基因组构建必要的索引文件，以支持高效的序列比对
 
-### 质量控制 (Quality Assessment)
-- 比对率统计
-- 插入片段大小分布
-- 覆盖深度分析
-- 比对质量分数分布
+**详细功能**:
+- **BWA索引构建**: 创建BWA-MEM算法所需的索引文件(.amb, .ann, .bwt, .pac, .sa)
+- **SAMtools索引**: 生成FASTA索引文件(.fai)，用于快速随机访问参考序列
+- **序列字典**: 创建序列字典文件(.dict)，包含染色体信息和长度
+
+**技术细节**:
+- **工具**: BWA index + SAMtools faidx
+- **输入**: 参考基因组FASTA文件 (ARS-UCD1.2, ~2.75GB)
+- **输出**: 多个索引文件 (总计约5-6GB)
+- **资源配置**: 8 CPU, 16GB内存, 200GB存储
+- **运行时间**: 约50分钟 (已完成 ✅)
+
+**重要性**: 
+- 索引构建是一次性操作，后续比对可重复使用
+- 索引质量直接影响比对速度和准确性
+- 大型基因组(如奶牛2.75GB)需要充足的内存和存储空间
+
+### 任务2: BWAAlignment - BWA序列比对 🎯
+
+**用途**: 将预处理后的测序reads比对到参考基因组上，生成比对结果
+
+**详细功能**:
+- **序列比对**: 使用BWA-MEM算法进行高精度比对
+- **读组信息**: 添加样本、文库、测序平台等元数据
+- **比对参数优化**: 针对短读长测序数据优化参数
+
+**技术细节**:
+- **工具**: BWA-MEM v0.7.17
+- **输入**: 清洁FASTQ文件 (~1.3GB压缩) + 参考基因组索引
+- **输出**: SAM格式比对文件 (~15-20GB未压缩)
+- **资源配置**: 16 CPU, 32GB内存, 400GB存储
+- **当前状态**: 正在运行 🔄 (已运行约1小时)
+
+**关键参数**:
+- **最小种子长度**: 19bp (平衡敏感性和特异性)
+- **带宽**: 100 (允许的插入缺失范围)
+- **比对评分**: A=1, B=4, O=6, E=1 (匹配/错配/gap惩罚)
+- **读组标签**: @RG\tID:样本ID\tSM:样本名\tPL:ILLUMINA
+
+**性能特点**:
+- **高通量**: 处理数百万条reads
+- **高精度**: 支持复杂基因组区域比对
+- **内存效率**: 流式处理减少内存占用
+
+### 任务3: ProcessAlignment - 比对后处理和质量评估 📊
+
+**用途**: 将SAM文件转换为标准BAM格式，并进行质量过滤和统计分析
+
+**详细功能**:
+- **格式转换**: SAM转BAM，减少存储空间
+- **质量过滤**: 移除低质量比对 (MAPQ < 20)
+- **排序索引**: 按基因组坐标排序并创建索引
+- **统计分析**: 生成详细的比对质量报告
+
+**技术细节**:
+- **工具**: SAMtools v1.17
+- **输入**: SAM比对文件 (~15-20GB)
+- **输出**: 排序BAM文件 (~3-5GB) + 索引 + 统计报告
+- **资源配置**: 8 CPU, 16GB内存, 500GB存储
+- **当前状态**: 等待中 ⏳
+
+**处理步骤**:
+1. **SAM转BAM**: `samtools view -b` (压缩比约4:1)
+2. **质量过滤**: 移除未比对reads (-F 4) 和低质量比对 (-q 20)
+3. **坐标排序**: `samtools sort` 按染色体位置排序
+4. **索引创建**: `samtools index` 生成.bai索引文件
+5. **统计生成**: 
+   - `samtools stats`: 详细比对统计
+   - `samtools flagstat`: 比对标志统计
+   - `samtools idxstats`: 每条染色体比对统计
+
+**质量指标**:
+- **总比对率**: 期望 >95%
+- **唯一比对率**: 期望 >90%
+- **重复率**: 通常 <20%
+- **插入片段大小**: 期望均值约300-500bp
+
+## 🎯 工作流整体架构
+
+```
+预处理FASTQ → [索引构建] → [BWA比对] → [BAM处理] → 最终BAM文件
+     ↓              ↓           ↓           ↓           ↓
+  1.3GB压缩      索引文件     SAM文件     BAM文件     统计报告
+                 (~6GB)      (~20GB)     (~5GB)      (数MB)
+```
+
+## 📈 性能基准和预期
+
+### 当前运行状态 (运行ID: 1809888)
+- **总预计运行时间**: 2.5-3小时
+- **已完成**: BuildReferenceIndex (50分钟)
+- **进行中**: BWAAlignment (1小时+，预计还需30-60分钟)
+- **待执行**: ProcessAlignment (预计20-30分钟)
+
+### 资源利用效率
+- **CPU利用率**: BWA比对阶段约80-90%
+- **内存使用**: 峰值约30GB (BWA比对阶段)
+- **I/O吞吐**: 读取约100MB/s，写入约50MB/s
+- **网络传输**: S3读写约20-30MB/s
+
+## 🔧 工作流特性
+
+### 容错和监控
+- **自动重试**: 任务失败自动重试3次
+- **CloudWatch日志**: 详细的执行日志记录
+- **状态监控**: 实时任务状态和资源使用监控
+- **错误诊断**: 自动错误分类和建议
+
+### 数据管理
+- **输入验证**: 自动检查FASTQ和参考基因组完整性
+- **中间文件**: 自动清理临时文件节省存储
+- **输出组织**: 结构化输出目录便于后续分析
 
 ## 📁 文件结构
 
 ```
 02_sequence_alignment/
-├── README.md                           # 本说明文档
-├── multi_file_alignment_workflow.wdl  # 多文件比对主工作流
-├── tasks/                              # 任务定义目录（待创建）
-│   ├── bwa_alignment_task.wdl         # BWA比对任务
-│   ├── sam_processing_task.wdl        # SAM/BAM处理任务
-│   ├── alignment_qc_task.wdl          # 比对质量控制任务
-│   └── duplicate_marking_task.wdl     # 重复标记任务
-├── inputs/                             # 输入参数配置（待创建）
-│   └── alignment_inputs.json          # 比对参数配置文件
-└── scripts/                            # 辅助脚本（待创建）
-    ├── prepare_reference.sh           # 参考基因组索引准备
-    └── alignment_stats.py             # 比对统计分析
+├── README.md                           # 本说明文档 (已更新)
+├── sequence_alignment_v2_ecr.wdl      # 主要工作流 (使用私有ECR)
+├── sequence_alignment_v1_complete.wdl # 完整版工作流
+├── multi_file_alignment_workflow.wdl  # 多文件比对工作流
+└── sequence_alignment_v2_ecr.zip      # 部署包
 ```
 
 ## 🚀 使用方法
 
-### 1. 参考基因组准备
+### 启动序列比对工作流
 ```bash
-# 创建BWA索引
-bwa index reference_genome.fasta
-
-# 创建samtools索引
-samtools faidx reference_genome.fasta
-
-# 创建序列字典
-picard CreateSequenceDictionary \
-    R=reference_genome.fasta \
-    O=reference_genome.dict
-```
-
-### 2. 多文件比对流程
-```bash
-# 使用AWS Omics运行多文件比对工作流
 aws omics start-run \
-    --workflow-id <workflow-id> \
-    --parameters file://inputs/alignment_inputs.json \
-    --name "cattle-alignment-$(date +%Y%m%d)"
+    --workflow-id 2495995 \
+    --role-arn arn:aws:iam::ACCOUNT:role/OmicsServiceRole \
+    --name "cow-sequence-alignment-$(date +%Y%m%d-%H%M%S)" \
+    --output-uri "s3://your-bucket/omics-outputs/sequence-alignment/" \
+    --parameters '{
+        "sample_name": "SRR16760538",
+        "cleaned_fastq": "s3://path/to/cleaned.fastq.gz",
+        "reference_genome": "s3://path/to/reference.fna",
+        "bwa_cpu": 16,
+        "bwa_memory_gb": 32,
+        "samtools_cpu": 8,
+        "samtools_memory_gb": 16
+    }'
 ```
 
-### 3. 输入数据要求
-- **预处理后的FASTQ文件**: 来自01_data_preprocessing步骤
-- **参考基因组**: 奶牛ARS-UCD1.2基因组
-- **读组信息**: 样本ID、文库信息、测序平台
+### 监控运行状态
+```bash
+# 检查运行状态
+aws omics get-run --id <run-id>
 
-## ⚙️ 比对参数配置
+# 查看任务详情
+aws omics list-run-tasks --id <run-id>
 
-### BWA-MEM参数
-- **最小种子长度**: 19
-- **带宽**: 100
-- **Z-dropoff**: 100
-- **3'端剪切惩罚**: 5
-
-### SAM/BAM处理
-- **排序方式**: 按坐标排序
-- **压缩级别**: 6 (平衡速度和存储)
-- **索引创建**: 自动生成BAI索引
-
-### 质量过滤
-- **最小比对质量**: MAPQ ≥ 20
-- **去除未比对reads**: 是
-- **去除次要比对**: 是
+# 获取运行日志
+aws omics get-run-logs --id <run-id>
+```
 
 ## 📊 输出结果
 
 ### 主要输出文件
-- **sorted.bam**: 排序后的比对结果
-- **sorted.bam.bai**: BAM文件索引
-- **alignment_stats.txt**: 比对统计信息
-- **coverage_report.html**: 覆盖度分析报告
+- **final_bam**: 排序后的比对结果 (约3-5GB)
+- **final_bam_index**: BAM文件索引 (.bai)
+- **alignment_stats**: 详细比对统计 (samtools stats)
+- **flagstat_report**: 比对标志统计 (samtools flagstat)
+- **idxstats_report**: 染色体比对统计 (samtools idxstats)
 
-### 质量指标
-- **总比对率**: >95% (高质量数据)
-- **唯一比对率**: >90%
-- **平均覆盖深度**: 30X (推荐)
-- **覆盖均匀性**: CV < 0.3
-
-## 🔧 工作流特性
-
-### 多文件支持
-- 同时处理多个FASTQ文件对
-- 自动合并同一样本的多个文库
-- 保持读组信息完整性
-
-### 并行处理
-- 染色体级别并行比对
-- 多线程BWA比对
-- 分布式计算优化
-
-### 错误处理
-- 自动重试机制
-- 中间文件清理
-- 详细日志记录
-
-## 📈 性能优化
-
-### 计算资源
-- **CPU**: 16-32核心推荐
-- **内存**: 64GB推荐
-- **存储**: 高IOPS SSD存储
-
-### 优化策略
-- 参考基因组预加载
-- 流式处理减少I/O
-- 智能任务调度
+### 输出位置
+```
+s3://catface996-genomic/omics-outputs/sequence-alignment-v2-final/1809888/
+├── out/
+│   ├── final_bam/
+│   │   └── SRR16760538.sorted.bam
+│   ├── final_bam_index/
+│   │   └── SRR16760538.sorted.bam.bai
+│   ├── alignment_stats/
+│   │   └── SRR16760538_alignment_stats.txt
+│   ├── flagstat_report/
+│   │   └── SRR16760538_flagstat.txt
+│   └── idxstats_report/
+│       └── SRR16760538_idxstats.txt
+└── reference_index_files/
+    └── [BWA和SAMtools索引文件]
+```
 
 ## 🔗 数据流向
 
 ### 输入来源
-- **01_data_preprocessing**: 清理后的FASTQ文件
-- **genomic_data/02_reference_genome**: 参考基因组文件
+- **预处理工作流**: 清洁FASTQ文件 (运行ID: 5969296)
+- **参考基因组**: ARS-UCD1.2 奶牛基因组
 
 ### 输出去向
-- **03_variant_detection**: BAM文件用于变异检测
-- **genomic_data/03_alignment_results**: 存储比对结果
+- **变异检测工作流**: BAM文件用于SNP/INDEL检测
+- **结构变异分析**: BAM文件用于大片段变异检测
+- **覆盖度分析**: 基因组覆盖度统计
 
 ## 📚 相关文档
 
 - [BWA用户手册](http://bio-bwa.sourceforge.net/bwa.shtml)
 - [SAMtools文档](http://www.htslib.org/doc/samtools.html)
 - [AWS Omics最佳实践](https://docs.aws.amazon.com/omics/latest/dev/workflows-best-practices.html)
+- [SAM/BAM格式规范](https://samtools.github.io/hts-specs/SAMv1.pdf)
 
 ---
 
-**注意**: 序列比对是计算密集型步骤，合理的参数配置和资源分配对性能至关重要。
+**最后更新**: 2025年8月10日  
+**当前状态**: BWA比对任务正在运行中 🔄  
+**预计完成**: 约1-1.5小时后
