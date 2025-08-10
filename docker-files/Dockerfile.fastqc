@@ -1,0 +1,36 @@
+# FastQC v0.12.1 Dockerfile
+# 用于基因组测序数据质量评估
+FROM ubuntu:20.04
+
+LABEL maintainer="AWS Omics Demo Project"
+LABEL version="0.12.1"
+LABEL description="FastQC for genomic sequencing data quality assessment"
+
+# 设置非交互模式
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装依赖
+RUN apt-get update && apt-get install -y \
+    openjdk-11-jre-headless \
+    wget \
+    unzip \
+    perl \
+    fontconfig \
+    && rm -rf /var/lib/apt/lists/*
+
+# 下载并安装FastQC v0.12.1
+RUN cd /opt && \
+    wget -q https://www.bioinformatics.babraham.ac.uk/projects/fastqc/fastqc_v0.12.1.zip && \
+    unzip -q fastqc_v0.12.1.zip && \
+    chmod +x FastQC/fastqc && \
+    ln -s /opt/FastQC/fastqc /usr/local/bin/fastqc && \
+    rm fastqc_v0.12.1.zip
+
+# 设置工作目录
+WORKDIR /work
+
+# 验证安装
+RUN fastqc --version
+
+# 默认命令
+CMD ["fastqc", "--help"]

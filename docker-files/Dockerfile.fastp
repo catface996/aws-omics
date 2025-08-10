@@ -1,0 +1,36 @@
+# fastp v0.23.4 Dockerfile
+# 用于高速测序数据预处理和质量控制
+FROM ubuntu:20.04
+
+LABEL maintainer="AWS Omics Demo Project"
+LABEL version="0.23.4"
+LABEL description="fastp for high-speed sequencing data preprocessing and quality control"
+
+# 设置非交互模式
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装依赖
+RUN apt-get update && apt-get install -y \
+    wget \
+    build-essential \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 下载并编译安装fastp v0.23.4
+RUN cd /opt && \
+    wget -q https://github.com/OpenGene/fastp/archive/refs/tags/v0.23.4.tar.gz && \
+    tar -xzf v0.23.4.tar.gz && \
+    cd fastp-0.23.4 && \
+    make && \
+    make install && \
+    cd .. && \
+    rm -rf fastp-0.23.4 v0.23.4.tar.gz
+
+# 设置工作目录
+WORKDIR /work
+
+# 验证安装
+RUN fastp --version
+
+# 默认命令
+CMD ["fastp", "--help"]

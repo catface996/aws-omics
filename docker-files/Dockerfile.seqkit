@@ -1,0 +1,32 @@
+# seqkit v2.5.1 Dockerfile
+# 用于FASTA/Q文件处理和序列去重
+FROM ubuntu:20.04
+
+LABEL maintainer="AWS Omics Demo Project"
+LABEL version="2.5.1"
+LABEL description="seqkit for FASTA/Q file processing and sequence deduplication"
+
+# 设置非交互模式
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装依赖
+RUN apt-get update && apt-get install -y \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# 下载并安装seqkit v2.5.1
+RUN cd /opt && \
+    wget -q https://github.com/shenwei356/seqkit/releases/download/v2.5.1/seqkit_linux_amd64.tar.gz && \
+    tar -xzf seqkit_linux_amd64.tar.gz && \
+    mv seqkit /usr/local/bin/ && \
+    chmod +x /usr/local/bin/seqkit && \
+    rm seqkit_linux_amd64.tar.gz
+
+# 设置工作目录
+WORKDIR /work
+
+# 验证安装
+RUN seqkit version
+
+# 默认命令
+CMD ["seqkit", "help"]
